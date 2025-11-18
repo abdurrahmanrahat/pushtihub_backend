@@ -1,81 +1,128 @@
 import { Schema, model } from 'mongoose';
 import { ORDER_STATUS } from './order.constants';
-import { IOrder } from './order.interface';
+import { TOrder } from './order.interface';
 
-const orderSchema = new Schema<IOrder>(
+const selectedVariantSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ['size', 'color', 'weight'],
+      required: true,
+    },
+    item: {
+      value: { type: String, required: true },
+      price: { type: Number }, // optional (secondary variants)
+      sellingPrice: { type: Number }, // optional
+      stock: { type: Number }, // optional
+    },
+  },
+  { _id: false },
+);
+
+const orderItemSchema = new Schema(
+  {
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true,
+    },
+
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+
+    selectedVariants: {
+      type: [selectedVariantSchema],
+      required: true,
+    },
+
+    unitSellingPrice: { type: Number },
+    unitPrice: { type: Number },
+    lineTotal: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+const paymentDetailsSchema = new Schema(
+  {
+    method: { type: String, required: true }, // "bkash" | "nagad"
+    phone: { type: String, required: true },
+    transactionId: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const customerInfoSchema = new Schema(
+  {
+    fullName: { type: String, required: true },
+    phone: { type: String, required: true },
+    fullAddress: { type: String, required: true },
+    country: { type: String, required: true },
+    orderNotes: { type: String },
+  },
+  { _id: false },
+);
+
+const orderSchema = new Schema<TOrder>(
   {
     orderNumber: {
       type: String,
       required: true,
-      unique: true, // optional but ideal
+      unique: true,
     },
-    fullName: {
-      type: String,
-      required: [true, 'Full name is required'],
-      trim: true,
+
+    customerInfo: {
+      type: customerInfoSchema,
+      required: true,
     },
-    fullAddress: {
-      type: String,
-      required: [true, 'Full address is required'],
-    },
-    phone: {
-      type: String,
-      required: [true, 'Phone number is required'],
-    },
-    country: {
-      type: String,
-      required: [true, 'Country is required'],
-    },
-    orderNotes: {
-      type: String,
-      required: false,
-    },
+
     shippingOption: {
       type: String,
       enum: ['dhaka', 'outside'],
-      required: [true, 'Shipping zone (inside Dhaka or not) must be specified'],
+      required: true,
     },
-    orderItems: [
-      {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: 'Product',
-          required: [true, 'Product reference is required'],
-        },
-        quantity: {
-          type: Number,
-          required: [true, 'Quantity is required'],
-          min: [1, 'Quantity must be at least 1'],
-        },
-      },
-    ],
+
+    shippingCost: {
+      type: Number,
+      required: true,
+    },
+
+    orderItems: {
+      type: [orderItemSchema],
+      required: true,
+    },
+
     subtotal: {
       type: Number,
-      required: [true, 'Total price is required'],
-      min: [0, 'Total price cannot be negative'],
+      required: true,
+      min: 0,
     },
+
     total: {
       type: Number,
-      required: [true, 'Sub total price is required'],
-      min: [0, 'Sub total price cannot be negative'],
+      required: true,
+      min: 0,
     },
+
+    paymentDetails: {
+      type: paymentDetailsSchema,
+      required: true,
+    },
+
     status: {
       type: String,
       enum: Object.values(ORDER_STATUS),
       default: ORDER_STATUS.pending,
     },
-    paymentMethod: {
-      type: String,
-      required: [true, 'Payment method is required'],
-    },
+
     isDeleted: {
       type: Boolean,
       default: false,
     },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
-export const Order = model<IOrder>('Order', orderSchema);
+export const Order = model<TOrder>('Order', orderSchema);

@@ -1,25 +1,52 @@
-import { Document, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { ORDER_STATUS } from './order.constants';
 
-export interface IOrder extends Document {
-  orderNumber: string;
-  fullName: string;
-  fullAddress: string;
-  phone: string;
-  country: string;
-  orderNotes?: string;
+export type TOrder = {
+  orderNumber?: string; // generated in backend
+  customerInfo: {
+    fullName: string;
+    phone: string;
+    fullAddress: string;
+    country: string;
+    orderNotes?: string;
+  };
+
   shippingOption: 'dhaka' | 'outside';
+  shippingCost: number;
+
   orderItems: TOrderItem[];
-  total: number;
+
   subtotal: number;
-  paymentMethod: string;
+  total: number;
+
+  paymentDetails: {
+    method: 'bkash' | 'nagad'; // extend later if needed
+    phone: string;
+    transactionId: string;
+  };
+
   status?: keyof typeof ORDER_STATUS;
   isDeleted?: boolean;
-}
+};
 
-type TOrderItem = {
+export type TOrderItem = {
   product: Types.ObjectId;
+
   quantity: number;
+
+  selectedVariants: {
+    type: 'size' | 'color' | 'weight';
+    item: {
+      value: string;
+      price?: number; // optional
+      sellingPrice?: number; // optional
+      stock?: number; // optional
+    };
+  }[];
+
+  unitSellingPrice: number | null;
+  unitPrice: number | null;
+  lineTotal: number;
 };
 
 // after creating order, then update each product stock
