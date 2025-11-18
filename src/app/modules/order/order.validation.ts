@@ -28,8 +28,8 @@ const orderItemSchema = z.object({
     .array(selectedVariantSchema)
     .min(1, 'At least one variant must be selected'),
 
-  unitSellingPrice: z.number().nullable(),
-  unitPrice: z.number().nullable(),
+  unitSellingPrice: z.number(),
+  unitPrice: z.number(),
   lineTotal: z
     .number({ required_error: 'Line total is required' })
     .min(0, 'Line total cannot be negative'),

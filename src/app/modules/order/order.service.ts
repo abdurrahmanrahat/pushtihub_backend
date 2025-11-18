@@ -41,29 +41,69 @@ const createOrderIntoDB = async (payload: TOrder) => {
     const orderNumber = `ORD-${yearMonth}-${String(sequence).padStart(6, '0')}`;
 
     // -----------------------------------
-    // STOCK MANAGEMENT PER ORDER ITEM
+    // UPDATE STOCK & SALE COUNT PER ITEM
     // -----------------------------------
     for (const item of payload.orderItems) {
-      const updated = await Product.updateOne(
-        {
-          _id: item.product,
-          stock: { $gte: item.quantity },
-        },
-        {
-          $inc: {
-            stock: -item.quantity,
-            salesCount: item.quantity,
-          },
-        },
-        { session },
-      );
+      const { product, quantity, selectedVariants } = item;
 
-      if (updated.modifiedCount === 0) {
+      // MUST be primary variant at index 0
+      const primaryVariant = selectedVariants[0];
+
+      if (!primaryVariant || !primaryVariant.item) {
         throw new AppError(
           httpStatus.BAD_REQUEST,
-          `Insufficient stock for product ${item.product}`,
+          'Primary variant missing in orderItems',
         );
       }
+
+      const selectedValue = primaryVariant.item.value;
+
+      // Pull the product with all variants
+      const productDoc = await Product.findById(product).session(session);
+
+      if (!productDoc) {
+        throw new AppError(
+          httpStatus.NOT_FOUND,
+          `Product not found: ${product}`,
+        );
+      }
+
+      const pVariant = productDoc.variants.primary;
+
+      if (!pVariant) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          `Primary variant does not exist for product: ${product}`,
+        );
+      }
+
+      // Find matching variant item by value
+      const variantItem = pVariant.items.find(
+        (v: any) => v.value === selectedValue,
+      );
+
+      if (!variantItem) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          `Variant ${selectedValue} not found for product ${product}`,
+        );
+      }
+
+      // Check stock
+      if (variantItem.stock < quantity) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          `Insufficient stock for ${product} - ${selectedValue}`,
+        );
+      }
+
+      // Deduct stock
+      variantItem.stock -= quantity;
+
+      // Increase product-level salesCount
+      productDoc.salesCount += quantity;
+
+      await productDoc.save({ session });
     }
 
     // -----------------------------------
@@ -129,8 +169,8 @@ const getSingleOrderFromDB = async (orderId: string) => {
 };
 
 // -------------------------------------------
-// UPDATE ORDER (Status, Info)
-// If status changed to "cancelled" stock must restore
+// UPDATE ORDER (Status Change)
+// If status changed to "cancelled" → restore stock
 // -------------------------------------------
 const updateOrderIntoDB = async (orderId: string, payload: Partial<TOrder>) => {
   const session = await Order.startSession();
@@ -153,20 +193,30 @@ const updateOrderIntoDB = async (orderId: string, payload: Partial<TOrder>) => {
       existingOrder.status !== 'cancelled';
 
     // -----------------------------------
-    // Restore stock on cancellation
+    // RESTORE STOCK IF CANCELLED
     // -----------------------------------
     if (isCancelling) {
       for (const item of existingOrder.orderItems) {
-        await Product.updateOne(
-          { _id: item.product },
-          {
-            $inc: {
-              stock: item.quantity,
-              salesCount: -item.quantity,
-            },
-          },
-          { session },
+        const { product, quantity, selectedVariants } = item;
+        const primaryVariant = selectedVariants[0];
+        const selectedValue = primaryVariant.item.value;
+
+        const productDoc = await Product.findById(product).session(session);
+        if (!productDoc) continue;
+
+        const pVariant = productDoc.variants.primary;
+        const variantItem = pVariant.items.find(
+          (v: any) => v.value === selectedValue,
         );
+
+        if (variantItem) {
+          variantItem.stock += quantity;
+        }
+
+        // Reduce sales count
+        productDoc.salesCount -= quantity;
+
+        await productDoc.save({ session });
       }
     }
 
@@ -190,7 +240,7 @@ const updateOrderIntoDB = async (orderId: string, payload: Partial<TOrder>) => {
 };
 
 // -------------------------------------------
-// DELETE ORDER (Soft Delete + Stock Restore)
+// DELETE ORDER (Soft Delete + Restore Stock)
 // -------------------------------------------
 const deleteOrderIntoDB = async (orderId: string) => {
   const session = await Order.startSession();
@@ -212,16 +262,25 @@ const deleteOrderIntoDB = async (orderId: string) => {
 
     // Restore stock
     for (const item of order.orderItems) {
-      await Product.updateOne(
-        { _id: item.product },
-        {
-          $inc: {
-            stock: item.quantity,
-            salesCount: -item.quantity,
-          },
-        },
-        { session },
+      const { product, quantity, selectedVariants } = item;
+      const primaryVariant = selectedVariants[0];
+      const selectedValue = primaryVariant.item.value;
+
+      const productDoc = await Product.findById(product).session(session);
+      if (!productDoc) continue;
+
+      const pVariant = productDoc.variants.primary;
+      const variantItem = pVariant.items.find(
+        (v: any) => v.value === selectedValue,
       );
+
+      if (variantItem) {
+        variantItem.stock += quantity;
+      }
+
+      productDoc.salesCount -= quantity;
+
+      await productDoc.save({ session });
     }
 
     order.isDeleted = true;

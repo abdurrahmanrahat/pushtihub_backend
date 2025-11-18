@@ -11,9 +11,9 @@ const selectedVariantSchema = new Schema(
     },
     item: {
       value: { type: String, required: true },
-      price: { type: Number }, // optional (secondary variants)
-      sellingPrice: { type: Number }, // optional
-      stock: { type: Number }, // optional
+      price: { type: Number, required: false }, // optional (secondary variants)
+      sellingPrice: { type: Number, required: false }, // optional
+      stock: { type: Number, required: false }, // optional
     },
   },
   { _id: false },

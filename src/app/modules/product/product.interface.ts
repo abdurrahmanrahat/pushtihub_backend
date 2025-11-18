@@ -17,8 +17,6 @@ export type TSecondaryVariants = {
 };
 
 export interface TProduct {
-  _id?: string;
-
   name: string;
   slug: string;
   description: string;
@@ -32,13 +30,10 @@ export interface TProduct {
     secondary: TSecondaryVariants;
   };
 
-  totalReviews?: number;
-  averageRatings?: number;
-  salesCount?: number;
-  isDeleted?: boolean;
-
-  createdAt?: Date;
-  updatedAt?: Date;
+  totalReviews: number;
+  averageRatings: number;
+  salesCount: number;
+  isDeleted: boolean;
 }
 
 //? create those before creating product

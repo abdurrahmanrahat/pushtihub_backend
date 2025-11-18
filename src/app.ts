@@ -10,7 +10,8 @@ app.use(express.json());
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://gadgetoria.vercel.app',
+  'https://pushtihub.com',
+  'https://pushtihub.vercel.app',
 ]; // frontend URL
 
 app.use(

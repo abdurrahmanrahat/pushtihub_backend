@@ -44,8 +44,8 @@ export type TOrderItem = {
     };
   }[];
 
-  unitSellingPrice: number | null;
-  unitPrice: number | null;
+  unitSellingPrice: number;
+  unitPrice: number;
   lineTotal: number;
 };
 
