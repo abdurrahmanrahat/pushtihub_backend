@@ -4,58 +4,61 @@ import QueryBuilder from '../../builder/QueryBuilder';
 import AppError from '../../errors/AppError';
 import { Product } from '../product/product.model';
 import { orderSearchableFields } from './order.constants';
-import { IOrder } from './order.interface';
+import { TOrder } from './order.interface';
 import { Order } from './order.model';
 
-const createOrderIntoDB = async (payload: IOrder) => {
+// -------------------------------------------
+// CREATE ORDER
+// -------------------------------------------
+const createOrderIntoDB = async (payload: TOrder) => {
   const session = await Order.startSession();
 
   try {
     session.startTransaction();
 
-    // order number count
+    // -------------------------------
+    // Generate Order Number (Monthly)
+    // -------------------------------
     const now = new Date();
     const yearMonth = `${now.getFullYear()}${(now.getMonth() + 1)
       .toString()
-      .padStart(2, '0')}`; // e.g., 202508
+      .padStart(2, '0')}`;
 
-    // Find the latest order for this month
     const lastOrder = await Order.findOne({
       isDeleted: false,
       orderNumber: new RegExp(`ORD-${yearMonth}-`),
     })
       .sort({ createdAt: -1 })
-      .session(session)
-      .exec();
+      .session(session);
 
     let sequence = 1;
 
-    if (lastOrder && lastOrder.orderNumber) {
-      // Extract last 6 digits for the sequence
+    if (lastOrder?.orderNumber) {
       const lastSeq = parseInt(lastOrder.orderNumber.slice(-6), 10);
       sequence = lastSeq + 1;
     }
 
-    const orderNumber = `ORD-${yearMonth}-${sequence
-      .toString()
-      .padStart(6, '0')}`;
+    const orderNumber = `ORD-${yearMonth}-${String(sequence).padStart(6, '0')}`;
 
+    // -----------------------------------
+    // STOCK MANAGEMENT PER ORDER ITEM
+    // -----------------------------------
     for (const item of payload.orderItems) {
-      const updateResult = await Product.updateOne(
+      const updated = await Product.updateOne(
         {
           _id: item.product,
-          stock: { $gte: item.quantity }, // make sure enough stock remains
+          stock: { $gte: item.quantity },
         },
         {
           $inc: {
-            stock: -item.quantity, // deduct stock
-            salesCount: item.quantity, // increase sales count
+            stock: -item.quantity,
+            salesCount: item.quantity,
           },
         },
         { session },
       );
 
-      if (updateResult.modifiedCount === 0) {
+      if (updated.modifiedCount === 0) {
         throw new AppError(
           httpStatus.BAD_REQUEST,
           `Insufficient stock for product ${item.product}`,
@@ -63,6 +66,9 @@ const createOrderIntoDB = async (payload: IOrder) => {
       }
     }
 
+    // -----------------------------------
+    // CREATE ORDER
+    // -----------------------------------
     const createdOrder = await Order.create([{ ...payload, orderNumber }], {
       session,
     });
@@ -71,17 +77,19 @@ const createOrderIntoDB = async (payload: IOrder) => {
     session.endSession();
 
     return createdOrder[0];
-  } catch (error: any) {
+  } catch (err: any) {
     await session.abortTransaction();
     session.endSession();
-
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      error.message || 'Unknown error',
+      err.message || 'Failed to create order',
     );
   }
 };
 
+// -------------------------------------------
+// GET ALL ORDERS
+// -------------------------------------------
 const getOrdersFromDB = async (query: Record<string, unknown>) => {
   const baseQuery = Order.find({ isDeleted: false });
 
@@ -95,15 +103,18 @@ const getOrdersFromDB = async (query: Record<string, unknown>) => {
     .populate('orderItems.product')
     .sort({ createdAt: -1 });
 
-  const countQuery = new QueryBuilder(Order.find({ isDeleted: false }), query)
-    .search(orderSearchableFields) // match search fields
-    .filter();
-
-  const totalCount = (await countQuery.modelQuery).length;
+  const totalCount = (
+    await new QueryBuilder(Order.find({ isDeleted: false }), query)
+      .search(orderSearchableFields)
+      .filter().modelQuery
+  ).length;
 
   return { data: orders, totalCount };
 };
 
+// -------------------------------------------
+// GET SINGLE ORDER
+// -------------------------------------------
 const getSingleOrderFromDB = async (orderId: string) => {
   const order = await Order.findOne({
     _id: orderId,
@@ -111,27 +122,76 @@ const getSingleOrderFromDB = async (orderId: string) => {
   }).populate('orderItems.product');
 
   if (!order) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Order not found.');
+    throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
   }
 
   return order;
 };
 
-const updateOrderIntoDB = async (orderId: string, payload: Partial<IOrder>) => {
-  const updatedOrder = await Order.findByIdAndUpdate(orderId, payload, {
-    new: true,
-  });
+// -------------------------------------------
+// UPDATE ORDER (Status, Info)
+// If status changed to "cancelled" stock must restore
+// -------------------------------------------
+const updateOrderIntoDB = async (orderId: string, payload: Partial<TOrder>) => {
+  const session = await Order.startSession();
 
-  if (!updatedOrder) {
+  try {
+    session.startTransaction();
+
+    const existingOrder = await Order.findOne({
+      _id: orderId,
+      isDeleted: false,
+    }).session(session);
+
+    if (!existingOrder) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    const isCancelling =
+      payload.status &&
+      payload.status === 'cancelled' &&
+      existingOrder.status !== 'cancelled';
+
+    // -----------------------------------
+    // Restore stock on cancellation
+    // -----------------------------------
+    if (isCancelling) {
+      for (const item of existingOrder.orderItems) {
+        await Product.updateOne(
+          { _id: item.product },
+          {
+            $inc: {
+              stock: item.quantity,
+              salesCount: -item.quantity,
+            },
+          },
+          { session },
+        );
+      }
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(orderId, payload, {
+      new: true,
+      session,
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return updatedOrder;
+  } catch (err: any) {
+    await session.abortTransaction();
+    session.endSession();
     throw new AppError(
-      httpStatus.NOT_FOUND,
-      'Order not found or already deleted.',
+      httpStatus.INTERNAL_SERVER_ERROR,
+      err.message || 'Failed to update order',
     );
   }
-
-  return updatedOrder;
 };
 
+// -------------------------------------------
+// DELETE ORDER (Soft Delete + Stock Restore)
+// -------------------------------------------
 const deleteOrderIntoDB = async (orderId: string) => {
   const session = await Order.startSession();
 
@@ -146,10 +206,11 @@ const deleteOrderIntoDB = async (orderId: string) => {
     if (!order) {
       throw new AppError(
         httpStatus.NOT_FOUND,
-        'Order not found or already deleted.',
+        'Order not found or already deleted',
       );
     }
 
+    // Restore stock
     for (const item of order.orderItems) {
       await Product.updateOne(
         { _id: item.product },
@@ -170,13 +231,12 @@ const deleteOrderIntoDB = async (orderId: string) => {
     session.endSession();
 
     return order;
-  } catch (error: any) {
+  } catch (err: any) {
     await session.abortTransaction();
     session.endSession();
-
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      error.message || 'Internal server error!',
+      err.message || 'Failed to delete order',
     );
   }
 };

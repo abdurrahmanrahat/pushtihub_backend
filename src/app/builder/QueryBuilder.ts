@@ -41,6 +41,8 @@ class QueryBuilder<T> {
       'maxPrice',
       'category',
       'tags',
+      'startDate',
+      'endDate',
     ];
     excludeFields.forEach((field) => delete queryObj[field]);
 
@@ -58,7 +60,26 @@ class QueryBuilder<T> {
       queryObj.sellingPrice = priceFilter;
     }
 
-    //? TODO: Category filtering
+    // --------------------------
+    // DATE RANGE FILTER
+    // --------------------------
+    if (this.query.startDate || this.query.endDate) {
+      const dateFilter: Record<string, unknown> = {};
+
+      if (this.query.startDate) {
+        dateFilter.$gte = new Date(this.query.startDate as string);
+      }
+
+      if (this.query.endDate) {
+        const end = new Date(this.query.endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      queryObj.createdAt = dateFilter;
+    }
+
+    // Category filtering
     if (this?.query?.category && allCategories) {
       const selectedCategories = (this?.query?.category as string)
         .split(',')
