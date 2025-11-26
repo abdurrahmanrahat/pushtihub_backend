@@ -23,7 +23,7 @@ router.get('/:blogSlug', BlogControllers.getSingleBlog);
 
 // Route to update a specific blog by ID
 router.patch(
-  '/:blogId',
+  '/:blogSlug',
   auth(USER_ROLE.admin),
   validateRequest(BlogValidations.updateBlogValidationSchema),
   BlogControllers.updateBlog,

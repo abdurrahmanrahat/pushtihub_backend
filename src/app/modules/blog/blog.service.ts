@@ -39,8 +39,8 @@ const getSingleBlogFromDb = async (blogSlug: string) => {
   return result;
 };
 
-const updateBlogIntoDb = async (blogId: string, body: Partial<TBlog>) => {
-  const result = await Blog.findOneAndUpdate({ _id: blogId }, body, {
+const updateBlogIntoDb = async (blogSlug: string, body: Partial<TBlog>) => {
+  const result = await Blog.findOneAndUpdate({ slug: blogSlug }, body, {
     new: true,
   });
   return result;
