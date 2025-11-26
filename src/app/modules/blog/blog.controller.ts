@@ -31,9 +31,9 @@ const getAllBlogs = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getSingleBlog = catchAsync(async (req: Request, res: Response) => {
-  const { blogId } = req.params;
+  const { blogSlug } = req.params;
 
-  const result = await BlogServices.getSingleBlogFromDb(blogId);
+  const result = await BlogServices.getSingleBlogFromDb(blogSlug);
 
   if (result) {
     sendResponse(res, {

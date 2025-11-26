@@ -8,6 +8,11 @@ const BlogSchema = new Schema<TBlog>(
       required: [true, 'Blog title is required'],
       minlength: 1,
     },
+    slug: {
+      type: String,
+      required: [true, 'Slug is required'],
+      minlength: 1,
+    },
     image: { type: String, required: [true, 'Blog image is required'] },
     description: {
       type: String,

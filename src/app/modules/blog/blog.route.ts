@@ -19,7 +19,7 @@ router.post(
 router.get('/', BlogControllers.getAllBlogs);
 
 // Route to get single blog
-router.get('/:blogId', BlogControllers.getSingleBlog);
+router.get('/:blogSlug', BlogControllers.getSingleBlog);
 
 // Route to update a specific blog by ID
 router.patch(

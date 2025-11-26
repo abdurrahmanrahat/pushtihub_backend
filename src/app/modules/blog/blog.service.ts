@@ -12,7 +12,7 @@ const getBlogsFromDb = async (query: Record<string, unknown>) => {
   const blogQuery = new QueryBuilder(Blog.find({ isDeleted: false }), query)
     .search(blogSearchableFields)
     .filter()
-    .pagination();
+    .paginate();
 
   const data = await blogQuery.modelQuery
     .sort({ createdAt: -1 })
@@ -31,11 +31,11 @@ const getBlogsFromDb = async (query: Record<string, unknown>) => {
   return { data, totalCount };
 };
 
-const getSingleBlogFromDb = async (blogId: string) => {
-  const result = await Blog.findOne({ _id: blogId, isDeleted: false }).populate(
-    'authorDetails',
-    '-password',
-  );
+const getSingleBlogFromDb = async (blogSlug: string) => {
+  const result = await Blog.findOne({
+    slug: blogSlug,
+    isDeleted: false,
+  }).populate('authorDetails', '-password');
   return result;
 };
 
